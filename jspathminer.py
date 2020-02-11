@@ -2,7 +2,7 @@ import json
 import esprima
 from tqdm import tqdm
 import pickle
-import glob
+import os
 
 
 class DocumentContext:
@@ -17,7 +17,7 @@ class DocumentContext:
     def print(self):
         print(f"#{self.document_id}")
         print(f"label:{self.document_label}")
-        print(f"class:{self.document_path}")
+        print(f"path:{self.document_path}")
         print("paths:")
         for start, end, path in zip(self.start_token_ids, self.end_token_ids, self.path_ids):
             print(f"{start}\t{end}\t{path}")
@@ -38,22 +38,21 @@ def get_data_type_expression(data, expression):
     symbol = ""
     if expression == "BinaryExpression":
         if data['operator'] == '+':
-        symbol = ":SUM"
+            symbol = ":SUM"
         if data['operator'] == '-':
-        symbol = ":SUB"
+            symbol = ":SUB"
         if data['operator'] == '*':
-        symbol = ":MUL"
+            symbol = ":MUL"
         if data['operator'] == '/':
-        symbol = ":DIV"
+            symbol = ":DIV"
         if data['operator'] == '%':
-        symbol = ":MOD"
+            symbol = ":MOD"
 
     if expression == "LogicalExpression":
-        symbol = ""
         if data['operator'] == '||':
-        symbol = ":OR"
+            symbol = ":OR"
         if data['operator'] == '&&':
-        symbol = ":AND"
+            symbol = ":AND"
 
     return expression+symbol
 
@@ -120,53 +119,73 @@ class PathMiner:
         doc_contexts = []
         path_idx = {}
         terminal_idx = {}
-        files = glob.glob(self.folder_path, ".js")
-        for js_file in tqdm(files):
+        files = [os.path.join(path, name) for path, subdirs, files in os.walk(self.folder_path) for name in files]
 
+        print(files)
+        for i, js_file in enumerate(tqdm(files)):
             # for cat in tqdm(file_labels):
             # cat_files = file_labels[cat]
             # for cat_file in tqdm(cat_files):
             # file_path = data_dir + cat_file
             # methods.append(file_path + " " + cat)
-        try:
-            with open(js_file) as f:
-                data = f.read()
+            try:
+                with open(js_file) as f:
+                    data = f.read()
 
-                json_text = json.dumps(esprima.parseScript(data).toDict())
-                json_data = json.loads(json_text)
+                    json_text = json.dumps(esprima.parseScript(data).toDict())
+                    json_data = json.loads(json_text)
 
-                contexts, path, up = recursive_traverse(
-                    json_data, [], "", False)
+                    contexts, path, up = recursive_traverse(
+                        json_data, [], "", False)
 
-                doc_context = DocumentContext()
-                doc_context.document_class = file_path
-                doc_context.document_label = cat
+                    doc_context = DocumentContext()
+                    doc_context.document_path = js_file
 
-                doc_context.document_id = len(doc_contexts)
+                    doc_context.document_id = len(doc_contexts)
 
-                for context in contexts:
-                    if not (isinstance(context.end_token, dict) or isinstance(context.start_token, dict) or isinstance(context.path, dict)):
-                    if context.start_token not in terminal_idx:
-                        terminal_idx[context.start_token] = len(terminal_idx)
-                    if context.end_token not in terminal_idx:
-                        terminal_idx[context.end_token] = len(terminal_idx)
-                    if context.path not in path_idx:
-                        path_idx[context.path] = len(path_idx)
+                    for context in contexts:
+                        if not (isinstance(context.end_token, dict) or isinstance(context.start_token, dict) or isinstance(context.path, dict)):
+                            if context.start_token not in terminal_idx:
+                                terminal_idx[context.start_token] = len(terminal_idx)
+                            if context.end_token not in terminal_idx:
+                                terminal_idx[context.end_token] = len(terminal_idx)
+                            if context.path not in path_idx:
+                                path_idx[context.path] = len(path_idx)
 
-                    doc_context.start_token_ids.append(
-                        terminal_idx[context.start_token])
-                    doc_context.end_token_ids.append(
-                        terminal_idx[context.end_token])
-                    doc_context.path_ids.append(path_idx[context.path])
-                doc_contexts.append(doc_context)
-                drive_path = "drive/My Drive/script-detector/model-checkpoints/"
-                except IOError:
-                print(f"Cannot open file : {file_path}")
-                except Exception as e:
-                print(f"Error in file: {file_path} due to {e}")
-            with open(drive_path+"doc_contexts_checkpoint_" + cat+".pkl", "wb") as f:
-                pickle.dump(doc_contexts, f)
-            with open(drive_path+"terminal_idx_checkpoint_"+cat+".pkl", "wb") as f:
-                pickle.dump(terminal_idx, f)
-            with open(drive_path+"path_idx_checkpoint_"+cat+".pkl", "wb") as f:
-                pickle.dump(path_idx, f)
+                            doc_context.start_token_ids.append(
+                                terminal_idx[context.start_token])
+                            doc_context.end_token_ids.append(
+                                terminal_idx[context.end_token])
+                            doc_context.path_ids.append(path_idx[context.path])
+                    doc_contexts.append(doc_context)
+
+            except IOError:
+                print(f"Cannot open file : {js_file}")
+            except Exception as e:
+                print(f"Error in file: {js_file} due to {e}")
+
+            if i % self.checkpoint_after == 0 and i != 0:
+                with open(self.output_path+"doc_contexts_checkpoint_" + i + ".pkl", "wb") as f:
+                    pickle.dump(doc_contexts, f)
+                with open(self.output_path+"terminal_idx_checkpoint_"+i+".pkl", "wb") as f:
+                    pickle.dump(terminal_idx, f)
+                with open(self.output_path+"path_idx_checkpoint_"+i+".pkl", "wb") as f:
+                    pickle.dump(path_idx, f)
+                    
+        with open(self.output_path+"doc_contexts_checkpoint_final.pkl", "wb") as f:
+            pickle.dump(doc_contexts, f)
+        with open(self.output_path+"terminal_idx_checkpoint_final.pkl", "wb") as f:
+            pickle.dump(terminal_idx, f)
+        with open(self.output_path+"path_idx_checkpoint_final.pkl", "wb") as f:
+            pickle.dump(path_idx, f)
+
+        return doc_contexts, terminal_idx, path_idx
+
+
+miner = PathMiner("sample_data/", "sample_output/")
+
+doc_contexts, terminal_idx, path_idx = miner.mine_paths()
+for doc_context in doc_contexts:
+    doc_context.print()
+print (path_idx)
+print (terminal_idx)
