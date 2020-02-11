@@ -180,12 +180,3 @@ class PathMiner:
             pickle.dump(path_idx, f)
 
         return doc_contexts, terminal_idx, path_idx
-
-
-miner = PathMiner("sample_data/", "sample_output/")
-
-doc_contexts, terminal_idx, path_idx = miner.mine_paths()
-for doc_context in doc_contexts:
-    doc_context.print()
-print (path_idx)
-print (terminal_idx)
