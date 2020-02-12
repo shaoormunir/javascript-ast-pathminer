@@ -122,11 +122,6 @@ class PathMiner:
 
         print(files)
         for i, js_file in enumerate(tqdm(files)):
-            # for cat in tqdm(file_labels):
-            # cat_files = file_labels[cat]
-            # for cat_file in tqdm(cat_files):
-            # file_path = data_dir + cat_file
-            # methods.append(file_path + " " + cat)
             try:
                 with open(js_file) as f:
                     data = f.read()
