@@ -108,10 +108,11 @@ def recursive_traverse(data, contexts, up):
 
 
 class PathMiner:
-    def __init__(self, folder_path, output_path, checkpoint_after=200):
+    def __init__(self, folder_path, output_path, checkpoint_after=200, label_dict = {}):
         self.folder_path = folder_path
         self.output_path = output_path
         self.checkpoint_after = checkpoint_after
+        self.label_dict = label_dict
 
     def mine_paths(self):
         doc_contexts = []
@@ -138,7 +139,8 @@ class PathMiner:
 
                     doc_context = DocumentContext()
                     doc_context.document_path = js_file
-
+                    if js_file in self.label_dict:
+                        doc_context.document_label = self.label_dict[js_file]
                     doc_context.document_id = len(doc_contexts)
 
                     for context in contexts:
@@ -179,7 +181,7 @@ class PathMiner:
 
         return doc_contexts, terminal_idx, path_idx
 
-miner = PathMiner("test", "test_output")
+miner = PathMiner("test/", "test_output/" ,label_dict={"test/test.js": "marketing", "test/test2.js": "cdn"})
 doc_contexts, terminal_idx, path_idx = miner.mine_paths()
 
 for context in doc_contexts:
