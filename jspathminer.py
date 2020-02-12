@@ -20,11 +20,11 @@ class DocumentContext:
         print(f"path:{self.document_path}")
         print("paths:")
         for start, end, path in zip(self.start_token_ids, self.end_token_ids, self.path_ids):
-            print(f"{start}\t{end}\t{path}")
+            print(f"{start}\t{path}\t{end}")
 
 
 class PathContext:
-    def __init__(self, start_token):
+    def __init__(self, start_token=""):
         self.start_token = start_token
         self.path = ""
         self.end_token = ""
@@ -62,51 +62,49 @@ def get_new_path_context(start_token):
     return path_context
 
 
-def recursive_traverse(data, contexts, path, up):
+def recursive_traverse(data, contexts, up):
     if isinstance(data, dict):
-        if len(path) == 0 and data.get('type', '') == 'Identifier':
-            contexts.append(get_new_path_context(data.get('name', '')))
-            path = f"{data.get('type', '')} ↑"
-            return contexts, path, True
+        if len(contexts) == 0:
+            contexts.append(PathContext())
+        if contexts[len(contexts)-1].start_token == "" and data.get('type', '') == 'Identifier':
+            contexts[len(contexts)-1].start_token = data.get('name', '')
+            contexts[len(contexts)-1].path = f"{data.get('type', '')} ↑"
+            return contexts, True
 
-        if len(path) != 0 and data.get('type', '') == 'Identifier':
+        if not contexts[len(contexts)-1].complete_context and data.get('type', '') == 'Identifier':
             if (contexts[len(contexts)-1].complete_context):
                 contexts.append(get_new_path_context(
                     contexts[len(contexts)-1].start_token))
             contexts[len(contexts)-1].end_token = data.get('name', '')
-            path += f" {data.get('type', '')}"
-            # print(path)
-            contexts[len(contexts)-1].path = path
+            contexts[len(contexts)-1].path += f" {data.get('type', '')}"
             contexts[len(contexts)-1].complete_context = True
             contexts.append(get_new_path_context(data.get('name', '')))
-            path = f"{data.get('type', '')} ↑"
-            return contexts, path, False
+            contexts[len(contexts)-1].path = f"{data.get('type', '')} ↑"
+            return contexts, False
 
-        if len(path) != 0 and data.get('type', '') == 'Literal':
+        if not contexts[len(contexts)-1].complete_context  and data.get('type', '') == 'Literal':
             if (contexts[len(contexts)-1].complete_context):
                 contexts.append(get_new_path_context(
                     contexts[len(contexts)-1].start_token))
             contexts[len(contexts)-1].end_token = data.get('value', '')
-            path += f" {data.get('type', '')}"
-            contexts[len(contexts)-1].path = path
+            contexts[len(contexts)-1].path += f" {data.get('type', '')}"
             contexts[len(contexts)-1].complete_context = True
+            contexts.append(PathContext())
             # print(path)
-            return contexts, "", False
+            return contexts, False
         for key, value in data.items():
-            temp_path = path
-            contexts, path, up = recursive_traverse(value, contexts, path, up)
-
-            if (len(path) != 0) and (temp_path != path):
+            temp_path =  contexts[len(contexts)-1].path
+            contexts, up = recursive_traverse(value, contexts, up)
+            if (not contexts[len(contexts)-1].complete_context) and (temp_path != contexts[len(contexts)-1].path):
                 if up:
-                    path += f" {get_data_type_expression(data, data.get('type', ''))} ↑"
+                    contexts[len(contexts)-1].path += f" {get_data_type_expression(data, data.get('type', ''))} ↑"
                 else:
-                    path += f" {get_data_type_expression(data, data.get('type', ''))} ↓"
+                    contexts[len(contexts)-1].path += f" {get_data_type_expression(data, data.get('type', ''))} ↓"
 
     elif isinstance(data, list):
-        temp = ""
         for item in data:
-            contexts, temp, up = recursive_traverse(item, contexts, path, up)
-    return contexts, path, up
+            recursive_traverse(item, contexts, up)
+    return contexts, up
 
 
 class PathMiner:
@@ -135,8 +133,8 @@ class PathMiner:
                     json_text = json.dumps(esprima.parseScript(data).toDict())
                     json_data = json.loads(json_text)
 
-                    contexts, path, up = recursive_traverse(
-                        json_data, [], "", False)
+                    contexts, _ = recursive_traverse(
+                        json_data, [], False)
 
                     doc_context = DocumentContext()
                     doc_context.document_path = js_file
@@ -144,7 +142,7 @@ class PathMiner:
                     doc_context.document_id = len(doc_contexts)
 
                     for context in contexts:
-                        if not (isinstance(context.end_token, dict) or isinstance(context.start_token, dict) or isinstance(context.path, dict)):
+                        if not (isinstance(context.end_token, dict) or isinstance(context.start_token, dict) or isinstance(context.path, dict)) and not (context.end_token == "" or context.start_token == "" or context.path == ""):
                             if context.start_token not in terminal_idx:
                                 terminal_idx[context.start_token] = len(terminal_idx)
                             if context.end_token not in terminal_idx:
@@ -180,3 +178,12 @@ class PathMiner:
             pickle.dump(path_idx, f)
 
         return doc_contexts, terminal_idx, path_idx
+
+miner = PathMiner("test", "test_output")
+doc_contexts, terminal_idx, path_idx = miner.mine_paths()
+
+for context in doc_contexts:
+    context.print()
+
+print (terminal_idx)
+print (path_idx)
